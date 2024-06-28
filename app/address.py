@@ -1,18 +1,51 @@
 from . import schemas, models
 from .logger import logger
 from sqlalchemy.orm import Session
-from fastapi import Depends, HTTPException, status, APIRouter, Response
+from fastapi import Depends, HTTPException, status, APIRouter, Response, Query
 from .database import get_db
+from geopy.distance import distance as geopy_distance
 
 router = APIRouter()
 
 
 @router.get("/")
-def get_addresses(db: Session = Depends(get_db), limit: int = 10, page: int = 1):
+def get_addresses(
+    latitude: float = Query(0.0, description="Latitude of the center point"),
+    longitude: float = Query(0.0, description="Longitude of the center point"),
+    distance: float = Query(
+        None, description="Distance in kilometers (default: infinite)"
+    ),
+    db: Session = Depends(get_db),
+    limit: int = Query(10, description="Limit the number of results"),
+    page: int = Query(1, description="Page number"),
+):
     try:
         skip = (page - 1) * limit
+
         addresses = db.query(models.Address).limit(limit).offset(skip).all()
-        return {"status": "success", "results": len(addresses), "notes": addresses}
+
+        if distance is None:
+            # if no distance specified, return all addresses
+            logger.info("Returning all addresses as no distance is specified.")
+            return {"status": "success", "results": len(addresses), "notes": addresses}
+        else:
+            # filter addresses by distance using geopy's great_circle function
+            filtered_addresses = []
+            center_point = (latitude, longitude)
+
+            for address in addresses:
+                address_point = (float(address.latitude), float(address.longitude))
+                distance_km = geopy_distance(center_point, address_point).kilometers
+                if distance is None or distance_km <= distance:
+                    filtered_addresses.append(address)
+
+            logger.info(f"Returning addresses within {distance} km.")
+            return {
+                "status": "success",
+                "results": len(filtered_addresses),
+                "addresses": filtered_addresses,
+            }
+
     except Exception as e:
         logger.error(f"Error getting addresses: {e}")
         raise HTTPException(
