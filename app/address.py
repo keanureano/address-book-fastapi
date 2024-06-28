@@ -49,7 +49,7 @@ def create_address(payload: schemas.AddressBase, db: Session = Depends(get_db)):
         )
 
 
-@router.put("/addresses/{address_id}")
+@router.put("/{address_id}")
 def update_address(
     address_id: int, payload: schemas.AddressBase, db: Session = Depends(get_db)
 ):
@@ -85,6 +85,32 @@ def update_address(
 
     except Exception as e:
         logger.error(f"Error updating address: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal Server Error",
+        )
+
+
+@router.delete("/{address_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_address(address_id: int, db: Session = Depends(get_db)):
+    try:
+        db_address = (
+            db.query(models.Address).filter(models.Address.id == address_id).first()
+        )
+        if not db_address:
+            logger.warning(f"No address found with id {address_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Address id {address_id} not found",
+            )
+
+        db.delete(db_address)
+        db.commit()
+        logger.info(f"Address with id {address_id} deleted successfully")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    except Exception as e:
+        logger.error(f"Error deleting address: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal Server Error",
